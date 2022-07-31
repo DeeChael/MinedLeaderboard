@@ -1,0 +1,5 @@
+main: net.deechael.minedleaderboard.MinedLeaderboard
+name: MinedLeaderboard
+version: 1.00.0
+api-version: 1.19
+author: DeeChael
