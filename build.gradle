@@ -3,7 +3,7 @@ plugins {
 }
 
 group 'net.deechael'
-version '1.00.0'
+version '1.01.0'
 
 repositories {
     mavenCentral()
@@ -13,10 +13,14 @@ repositories {
     maven {
         url = "https://libraries.minecraft.net"
     }
+    maven {
+        url = "https://maven.playpro.com"
+    }
 }
 
 dependencies {
     compileOnly 'org.jetbrains:annotations:23.0.0'
     compileOnly 'org.spigotmc:spigot-api:1.19-R0.1-SNAPSHOT'
     compileOnly 'com.mojang:brigadier:1.0.18'
+    compileOnly 'net.coreprotect:coreprotect:21.0'
 }

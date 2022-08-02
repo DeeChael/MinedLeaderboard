@@ -7,6 +7,8 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.mojang.brigadier.tree.RootCommandNode;
+import net.coreprotect.CoreProtect;
+import net.coreprotect.CoreProtectAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -21,6 +23,9 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.permissions.Permission;
+import org.bukkit.permissions.PermissionDefault;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
@@ -124,7 +129,56 @@ public final class MinedLeaderboard extends JavaPlugin implements Listener {
             }
         }
 
-        LiteralCommandNode<?> minedCommandNode = LiteralArgumentBuilder.literal("mined").executes(context -> {
+        if (Bukkit.getPluginManager().isPluginEnabled("CoreProtect")) {
+            CoreProtectAPI cp = getCoreProtect();
+            if (cp != null) {
+                List<CoreProtectAPI.ParseResult> resultList = cp.performLookup(365 * 24 * 60 * 60, null, null, null, null, null, 0, null).stream().map(cp::parseResult).toList();
+                Map<Vec3D, List<CoreProtectAPI.ParseResult>> checks = new HashMap<>();
+                for (CoreProtectAPI.ParseResult result : resultList) {
+                    Vec3D vec = new Vec3D(result.worldName(), result.getX(), result.getY(), result.getZ());
+                    if (mined(vec))
+                        continue;
+                    if (!checks.containsKey(vec))
+                        checks.put(vec, new ArrayList<>());
+                    checks.get(vec).add(result);
+                }
+                Map<UUID, Integer> scores = new HashMap<>();
+                for (Map.Entry<Vec3D, List<CoreProtectAPI.ParseResult>> entry : checks.entrySet()) {
+                    Vec3D location = entry.getKey();
+                    List<CoreProtectAPI.ParseResult> results = entry.getValue();
+                    results.sort(Comparator.comparingLong(CoreProtectAPI.ParseResult::getTimestamp));
+                    for (CoreProtectAPI.ParseResult result : results) {
+                        if (Objects.equals(result.getActionString(), "place")) {
+                            addMined(location);
+                            break;
+                        }
+                        if (Objects.equals(result.getActionString(), "break")) {
+                            addMined(location);
+                            UUID uuid = Bukkit.getOfflinePlayer(result.getPlayer()).getUniqueId();
+                            if (scores.containsKey(uuid)) {
+                                scores.put(uuid, scores.get(uuid) + 1);
+                            } else {
+                                scores.put(uuid, 1);
+                            }
+                            break;
+                        }
+                    }
+                }
+                for (Map.Entry<UUID, Integer> entry : scores.entrySet()) {
+                    this.addScore(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+
+        Bukkit.getPluginManager().addPermission(new Permission("minedleaderboard.command.mined", PermissionDefault.TRUE));
+        Bukkit.getPluginManager().addPermission(new Permission("minedleaderboard.command.leaderboard", PermissionDefault.TRUE));
+
+        LiteralCommandNode<?> minedCommandNode = LiteralArgumentBuilder.literal("mined")
+                .requires(o -> {
+                    CommandSender sender = getBukkitSender(o);
+                    return sender.hasPermission("minedleaderboard.command.mined");
+                })
+                .executes(context -> {
             CommandSender sender = getBukkitSender(context.getSource());
             if (sender instanceof Player player) {
                 player.sendMessage("§a§l(!) §r§a你的挖掘分数为 §r§e" + getScore(player.getUniqueId()));
@@ -148,7 +202,12 @@ public final class MinedLeaderboard extends JavaPlugin implements Listener {
             return 1;
         })).build();
 
-        LiteralCommandNode<?> leaderboardCommandNode = LiteralArgumentBuilder.literal("leaderboard").executes(context -> {
+        LiteralCommandNode<?> leaderboardCommandNode = LiteralArgumentBuilder.literal("leaderboard")
+                .requires(o -> {
+                    CommandSender sender = getBukkitSender(o);
+                    return sender.hasPermission("minedleaderboard.command.leaderboard");
+                })
+                .executes(context -> {
             CommandSender sender = getBukkitSender(context.getSource());
             List<Map.Entry<UUID, Integer>> all = getScoreAll().entrySet().stream().sorted((p2, p1) -> p1.getValue().compareTo(p2.getValue())).toList();
             int pages = all.size() % 15 == 0 ? all.size() / 15 : all.size() / 15 + 1;
@@ -192,10 +251,12 @@ public final class MinedLeaderboard extends JavaPlugin implements Listener {
             if (knownCommands != null) {
                 // Mined command
                 Command minedCommand = knownCommands.get("mined");
+                minedCommand.setPermission("minedleaderboard.command.mined");
                 registerToCommandPatcher(commandDispatcher, (CommandNode<Object>) minedCommandNode);
                 setDispatcher(minedCommand, commandDispatcher);
                 knownCommands.put("mined", minedCommand);
                 Command minedCommandPrefixed = knownCommands.get("minedleaderboard:mined");
+                minedCommandPrefixed.setPermission("minedleaderboard.command.mined");
                 LiteralCommandNode<?> literalCommandNode = clone("minedleaderboard", minedCommandNode, CommandListenerWrapper());
                 registerToCommandPatcher(commandDispatcher, (CommandNode<Object>) literalCommandNode);
                 setDispatcher(minedCommandPrefixed, commandDispatcher);
@@ -203,10 +264,12 @@ public final class MinedLeaderboard extends JavaPlugin implements Listener {
 
                 // Leaderboard command
                 Command leaderboardCommand = knownCommands.get("leaderboard");
+                leaderboardCommand.setPermission("minedleaderboard.command.leaderboard");
                 registerToCommandPatcher(commandDispatcher, (CommandNode<Object>) leaderboardCommandNode);
                 setDispatcher(leaderboardCommand, commandDispatcher);
                 knownCommands.put("leaderboard", leaderboardCommand);
                 Command leaderboardCommandPrefixed = knownCommands.get("minedleaderboard:leaderboard");
+                leaderboardCommandPrefixed.setPermission("minedleaderboard.command.leaderboard");
                 LiteralCommandNode<?> literalCommandNode2 = clone("minedleaderboard", leaderboardCommandNode, CommandListenerWrapper());
                 registerToCommandPatcher(commandDispatcher, (CommandNode<Object>) literalCommandNode2);
                 setDispatcher(leaderboardCommandPrefixed, commandDispatcher);
@@ -223,6 +286,29 @@ public final class MinedLeaderboard extends JavaPlugin implements Listener {
         }
     }
 
+    private CoreProtectAPI getCoreProtect() {
+        Plugin plugin = getServer().getPluginManager().getPlugin("CoreProtect");
+
+        if (!(plugin instanceof CoreProtect)) {
+            return null;
+        }
+
+        CoreProtectAPI CoreProtect = ((CoreProtect) plugin).getAPI();
+        if (!CoreProtect.isEnabled()) {
+            return null;
+        }
+
+        if (CoreProtect.APIVersion() < 9) {
+            return null;
+        }
+
+        return CoreProtect;
+    }
+
+    private boolean mined(Vec3D vec) {
+        return this.mined(vec.world(), vec.x(), vec.y(), vec.z());
+    }
+
     private boolean mined(String world, int x, int y, int z) {
         PreparedStatement statement = this.mined.preparedStatement("SELECT * FROM `mined` WHERE world=? and loc_x=? and loc_y=? and loc_z=?;");
         try {
@@ -234,6 +320,10 @@ public final class MinedLeaderboard extends JavaPlugin implements Listener {
         } catch (SQLException e) {
             return false;
         }
+    }
+
+    private void addMined(Vec3D vec) {
+        this.addMined(vec.world(), vec.x(), vec.y(), vec.z());
     }
 
     private void addMined(String world, int x, int y, int z) {
@@ -261,6 +351,28 @@ public final class MinedLeaderboard extends JavaPlugin implements Listener {
             }
         } else {
             PreparedStatement statement = this.mined.preparedStatement("UPDATE `player` SET amount=amount+? WHERE uuid=?;");
+            try {
+                statement.setInt(1, amount);
+                statement.setString(2, player.toString());
+                statement.executeUpdate();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    private void setScore(UUID player, int amount) {
+        if (!hasScore(player)) {
+            PreparedStatement statement = this.mined.preparedStatement("INSERT INTO `player` (`uuid`, `amount`) VALUES (?, ?);");
+            try {
+                statement.setString(1, player.toString());
+                statement.setInt(2, amount);
+                statement.executeUpdate();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        } else {
+            PreparedStatement statement = this.mined.preparedStatement("UPDATE `player` SET amount=? WHERE uuid=?;");
             try {
                 statement.setInt(1, amount);
                 statement.setString(2, player.toString());
@@ -300,7 +412,7 @@ public final class MinedLeaderboard extends JavaPlugin implements Listener {
         Map<UUID, Integer> map = new HashMap<>();
         try {
             ResultSet resultSet = this.mined.executeQuery("SELECT * FROM `player`;");
-            if (resultSet.next()) {
+            while (resultSet.next()) {
                 map.put(UUID.fromString(resultSet.getString("uuid")), resultSet.getInt("amount"));
             }
         } catch (SQLException ignored) {
