@@ -3,7 +3,7 @@ plugins {
 }
 
 group 'net.deechael'
-version '1.01.0'
+version '1.02.0'
 
 repositories {
     mavenCentral()
@@ -16,6 +16,9 @@ repositories {
     maven {
         url = "https://maven.playpro.com"
     }
+    maven {
+        url = "https://repo.extendedclip.com/content/repositories/placeholderapi/"
+    }
 }
 
 dependencies {
@@ -23,4 +26,5 @@ dependencies {
     compileOnly 'org.spigotmc:spigot-api:1.19-R0.1-SNAPSHOT'
     compileOnly 'com.mojang:brigadier:1.0.18'
     compileOnly 'net.coreprotect:coreprotect:21.0'
+    compileOnly 'me.clip:placeholderapi:2.11.2'
 }

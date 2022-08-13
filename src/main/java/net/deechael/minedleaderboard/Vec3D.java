@@ -6,7 +6,7 @@ public record Vec3D(String world, int x, int y, int z) {
 
     @Override
     public int hashCode() {
-        return Integer.parseInt(new StringBuilder(String.valueOf(Math.abs(world.hashCode()))).append(Math.abs(x)).append(Math.abs(y)).append(Math.abs(z)).toString()) + x + y + z;
+        return world.hashCode() + x + y + z;
     }
 
     @Override
